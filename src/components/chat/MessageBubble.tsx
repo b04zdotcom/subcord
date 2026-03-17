@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { CornerUpLeft } from "lucide-react";
 import Image from "next/image";
 import { parseISO } from "date-fns";
 import type { Message } from "@/lib/api/types";
@@ -27,6 +28,7 @@ interface Props {
   message: Message;
   registerRef: (id: string, el: HTMLElement | null) => void;
   isReply?: boolean;
+  onReply?: (message: Message) => void;
 }
 
 function Avatar({ name, photoUrl }: { name: string; photoUrl?: string }) {
@@ -93,7 +95,7 @@ const EMOJI_MAP: Record<string, string> = {
   thumbs_up: "👍", upvote: "❤️", face_with_tears_of_joy: "😂",
 };
 
-export function MessageBubble({ message, registerRef }: Props) {
+export function MessageBubble({ message, registerRef, onReply }: Props) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [localReactions, setLocalReactions] = useState(message.reactions ?? []);
@@ -199,6 +201,8 @@ export function MessageBubble({ message, registerRef }: Props) {
             ))}
           </div>
         )}
+
+
       </div>
       </div>
 
@@ -214,6 +218,18 @@ export function MessageBubble({ message, registerRef }: Props) {
               {emoji}
             </button>
           ))}
+          {onReply && (
+            <>
+              <div className="w-px h-4 bg-discord-border" />
+              <button
+                onClick={() => { onReply(message); setShowPicker(false); }}
+                className="flex items-center gap-1 text-xs font-medium text-discord-text-muted hover:text-discord-text-primary transition-colors"
+              >
+                <CornerUpLeft className="w-3.5 h-3.5" />
+                Reply
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

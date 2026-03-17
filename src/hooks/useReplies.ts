@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback } from "react";
-import type { Message } from "@/lib/api/types";
+import type { Message, Author } from "@/lib/api/types";
 
 const replyCache = new Map<string, Message[]>();
 
@@ -45,17 +45,32 @@ export function useReplies() {
     }
   }, []);
 
-  const postReply = useCallback(async (postId: string, body: string): Promise<boolean> => {
+  const postReply = useCallback(async (postId: string, body: string, quoteId?: string, author?: Author): Promise<boolean> => {
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Message = {
+      id: tempId,
+      body,
+      author: author ?? { id: "me", name: "You" },
+      createdAt: new Date().toISOString(),
+      publicationId: "",
+      ...(quoteId ? { parentId: quoteId } : {}),
+    };
+    setReplies((prev) => [...prev, optimistic]);
+
     try {
       const res = await fetch("/api/substack/replies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId, body }),
+        body: JSON.stringify({ postId, body, ...(quoteId ? { quoteId } : {}) }),
       });
-      if (!res.ok) return false;
-      await refreshReplies(postId);
+      if (!res.ok) {
+        setReplies((prev) => prev.filter((r) => r.id !== tempId));
+        return false;
+      }
+      refreshReplies(postId); // fire without await — replaces optimistic with real data
       return true;
     } catch {
+      setReplies((prev) => prev.filter((r) => r.id !== tempId));
       return false;
     }
   }, [refreshReplies]);

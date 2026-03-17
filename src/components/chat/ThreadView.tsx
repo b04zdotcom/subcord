@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowDown, Loader2, SendHorizonal } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { ArrowLeft, ArrowDown, Loader2, SendHorizonal, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { useReplies } from "@/hooks/useReplies";
 import type { Thread, Message } from "@/lib/api/types";
@@ -21,6 +21,8 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     loadReplies(thread.post.id);
@@ -65,12 +67,17 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }
 
+  const handleReplyTo = useCallback((msg: Message) => {
+    setReplyingTo(msg);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, []);
+
   async function handleSend() {
     const trimmed = replyText.trim();
     if (!trimmed || sending) return;
     setSending(true);
-    const ok = await postReply(thread.post.id, trimmed);
-    if (ok) setReplyText("");
+    const ok = await postReply(thread.post.id, trimmed, replyingTo?.id);
+    if (ok) { setReplyText(""); setReplyingTo(null); }
     setSending(false);
   }
 
@@ -120,6 +127,7 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
             message={{ ...msg, isAuthor: msg.author.id === thread.post.author.id }}
             registerRef={registerRef}
             isReply
+            onReply={handleReplyTo}
           />
         ))}
         </div>
@@ -137,8 +145,17 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
 
       {/* Reply input */}
       <div className="flex-shrink-0 px-4 py-3 border-t border-discord-border">
+        {replyingTo && (
+          <div className="flex items-center gap-2 mb-2 px-1 text-xs text-discord-text-muted">
+            <span>Replying to <span className="font-semibold" style={{ color: "#cc874a" }}>{replyingTo.author.name}</span></span>
+            <button onClick={() => setReplyingTo(null)} className="ml-auto hover:text-discord-text-primary transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2 bg-discord-input rounded-lg px-3 py-2">
           <textarea
+            ref={textareaRef}
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={(e) => {
@@ -147,7 +164,7 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
                 handleSend();
               }
             }}
-            placeholder="Write a reply…"
+            placeholder={replyingTo ? `Reply to ${replyingTo.author.name}…` : "Write a reply…"}
             rows={1}
             className="flex-1 bg-transparent text-sm text-discord-text-primary placeholder:text-discord-text-muted resize-none outline-none leading-relaxed"
             style={{ maxHeight: "120px", overflowY: "auto" }}

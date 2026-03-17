@@ -64,14 +64,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { postId, body } = await request.json();
+  const { postId, body, quoteId } = await request.json();
   if (!postId || !body?.trim()) {
     return NextResponse.json({ error: "Missing postId or body" }, { status: 400 });
   }
 
   const res = await substackFetch(`${BASE}/${postId}/comments`, {
     method: "POST",
-    body: { id: randomUUID(), body: body.trim() },
+    body: {
+      id: randomUUID(),
+      body: body.trim(),
+      ...(quoteId ? { quote_id: quoteId } : {}),
+    },
   });
 
   const json = await res.json();
