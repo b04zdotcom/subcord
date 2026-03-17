@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { parseISO } from "date-fns";
 import { MessageSquare } from "lucide-react";
 import Image from "next/image";
 import type { Thread } from "@/lib/api/types";
+import { ImageModal } from "./ImageModal";
 
 interface Props {
   threads: Thread[];
@@ -40,12 +41,14 @@ function formatTime(iso: string) {
 
 export function ThreadList({ threads, onOpen }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [threads]);
 
   return (
+    <>
     <div ref={scrollRef} className="flex-1 overflow-y-auto py-4 space-y-0">
       {threads.map((thread) => (
         <div
@@ -68,15 +71,15 @@ export function ThreadList({ threads, onOpen }: Props) {
               {thread.post.attachments && thread.post.attachments.length > 0 && (
                 <div className="my-2 flex flex-col gap-2 items-start">
                   {thread.post.attachments.map((att, i) => (
-                    <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={att.url}
-                        alt=""
-                        className="rounded-lg object-contain hover:opacity-90 transition-opacity cursor-pointer"
-                        style={{ maxWidth: "320px", maxHeight: "400px" }}
-                      />
-                    </a>
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      src={att.url}
+                      alt=""
+                      className="rounded-lg object-contain hover:opacity-90 transition-opacity cursor-pointer"
+                      style={{ maxWidth: "320px", maxHeight: "400px" }}
+                      onClick={(e) => { e.stopPropagation(); setLightboxSrc(att.url); }}
+                    />
                   ))}
                 </div>
               )}
@@ -95,5 +98,7 @@ export function ThreadList({ threads, onOpen }: Props) {
         </div>
       ))}
     </div>
+    {lightboxSrc && <ImageModal src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+    </>
   );
 }
