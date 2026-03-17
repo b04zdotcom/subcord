@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { CornerUpLeft } from "lucide-react";
 import Image from "next/image";
 import { parseISO } from "date-fns";
@@ -99,6 +99,22 @@ export function MessageBubble({ message, registerRef, onReply }: Props) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [localReactions, setLocalReactions] = useState(message.reactions ?? []);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showPicker) return;
+    function handleOutside(e: MouseEvent | TouchEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+    };
+  }, [showPicker]);
 
   function handleReaction(key: string) {
     const emoji = EMOJI_MAP[key] ?? key;
@@ -115,10 +131,16 @@ export function MessageBubble({ message, registerRef, onReply }: Props) {
   return (
     <>
     <div
-      ref={(el) => registerRef(message.id, el)}
+      ref={(el) => { registerRef(message.id, el); (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el; }}
       id={`msg-${message.id}`}
       className={`relative px-4 py-1.5 transition-colors${message.isAuthor ? " border-l-2" : ""}`}
-      style={message.isAuthor ? { borderLeftColor: "#de9c36", backgroundColor: "rgba(222,156,54,0.08)" } : undefined}
+      style={{
+        ...(message.isAuthor ? { borderLeftColor: "#de9c36" } : {}),
+        backgroundColor: showPicker ? "#242428" : message.isAuthor ? "rgba(222,156,54,0.08)" : undefined,
+      }}
+      onClick={() => {
+        if (!window.matchMedia("(hover: hover)").matches) setShowPicker((v) => !v);
+      }}
       onMouseEnter={(e) => {
         if (!window.matchMedia("(hover: hover)").matches) return;
         (e.currentTarget as HTMLDivElement).style.backgroundColor = "#242428";
@@ -211,7 +233,7 @@ export function MessageBubble({ message, registerRef, onReply }: Props) {
           {REACTION_OPTIONS.map(({ key, emoji }) => (
             <button
               key={key}
-              onClick={() => handleReaction(key)}
+              onClick={() => { handleReaction(key); setShowPicker(false); }}
               className="text-xl hover:scale-125 transition-transform leading-none"
               title={key}
             >
