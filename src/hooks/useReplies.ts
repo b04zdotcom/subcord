@@ -75,5 +75,5 @@ export function useReplies() {
     }
   }, [refreshReplies]);
 
-  return { replies, loading, error, loadReplies, refreshReplies, postReply };
+  return { replies, setReplies, loading, error, loadReplies, refreshReplies, postReply };
 }

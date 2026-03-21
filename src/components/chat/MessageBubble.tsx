@@ -92,13 +92,18 @@ async function postReaction(commentId: string, reaction: string) {
 }
 
 const EMOJI_MAP: Record<string, string> = {
-  thumbs_up: "👍", upvote: "❤️", face_with_tears_of_joy: "😂",
+  thumbs_up: "👍", upvote: "❤️", face_with_tears_of_joy: "😂", fire: "🔥",
+  raised_hands: "🙌", heart_eyes: "😍", sob: "😭", exploding_head: "🤯", clap: "👏", pray: "🙏",
 };
 
 export function MessageBubble({ message, registerRef, onReply }: Props) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [localReactions, setLocalReactions] = useState(message.reactions ?? []);
+
+  useEffect(() => {
+    setLocalReactions(message.reactions ?? []);
+  }, [message.reactions]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

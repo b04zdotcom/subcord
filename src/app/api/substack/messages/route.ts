@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const threads = normalizeThreads(raw, subdomain);
+  const threads = normalizeThreads(raw, numericId);
   // Sort oldest first so newest appears at the bottom
   threads.sort((a, b) => new Date(a.post.createdAt).getTime() - new Date(b.post.createdAt).getTime());
 

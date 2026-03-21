@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { ArrowLeft, ArrowDown, Loader2, SendHorizonal, X } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { useReplies } from "@/hooks/useReplies";
+import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 import type { Thread, Message } from "@/lib/api/types";
 
 interface Props {
@@ -17,22 +18,102 @@ interface Props {
 
 export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComplete, jumpTo, onRepliesLoaded }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { replies, loading, loadReplies, refreshReplies, postReply } = useReplies();
+  const { replies, setReplies, loading, loadReplies, postReply } = useReplies();
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // "New messages" divider + unread count — tracks messages received while window is not active
+  const [newDividerId, setNewDividerId] = useState<string | null>(null);
+  const newDividerIdRef = useRef<string | null>(null);
+  const isActiveRef = useRef(true);
+  const unreadCountRef = useRef(0);
+  const notifiedIdsRef = useRef(new Set<string>());
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
+
+  useEffect(() => {
+    if (typeof Notification !== "undefined") {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
+
+  async function requestNotifications() {
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+  }
+
+  useEffect(() => {
+    function onHide() {
+      isActiveRef.current = false;
+      setNewDividerId(null);
+      newDividerIdRef.current = null;
+      unreadCountRef.current = 0;
+      notifiedIdsRef.current.clear();
+      document.title = "Subcord";
+    }
+    function onShow() {
+      isActiveRef.current = true;
+      unreadCountRef.current = 0;
+      notifiedIdsRef.current.clear();
+      document.title = "Subcord";
+    }
+    function onVisibility() {
+      if (document.hidden) onHide(); else onShow();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onHide);
+    window.addEventListener("focus", onShow);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onHide);
+      window.removeEventListener("focus", onShow);
+      document.title = "Subcord";
+    };
+  }, []);
+
   useEffect(() => {
     loadReplies(thread.post.id);
   }, [thread.post.id, loadReplies]);
 
-  // Poll for new replies every 15 seconds
-  useEffect(() => {
-    const id = setInterval(() => refreshReplies(thread.post.id), 15_000);
-    return () => clearInterval(id);
-  }, [thread.post.id, refreshReplies]);
+  // Realtime updates via WebSocket — append new messages directly, no polling needed
+  const handleNewMessage = useCallback((msg: Message) => {
+    setReplies((prev) => {
+      if (prev.some((r) => r.id === msg.id)) return prev;
+      if (!isActiveRef.current && newDividerIdRef.current === null) {
+        newDividerIdRef.current = msg.id;
+        setNewDividerId(msg.id);
+      }
+      return [...prev, msg];
+    });
+    if (!isActiveRef.current && !notifiedIdsRef.current.has(msg.id)) {
+      notifiedIdsRef.current.add(msg.id);
+      unreadCountRef.current += 1;
+      document.title = `(${unreadCountRef.current}) Subcord`;
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        try {
+          const body = msg.body.length > 100 ? msg.body.slice(0, 100) + "…" : msg.body;
+          const n = new Notification(msg.author.name, { body });
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch (e) {
+          console.warn("[notifications] failed to show notification:", e);
+        }
+      } else {
+        console.log("[notifications] skipped — permission:", typeof Notification !== "undefined" ? Notification.permission : "unavailable");
+      }
+    }
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
+      setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }), 50);
+    }
+  }, [setReplies]);
+
+  const handleUpdatedMessage = useCallback((msg: Message) => {
+    setReplies((prev) => prev.map((r) => r.id === msg.id ? msg : r));
+  }, [setReplies]);
+
+  useRealtimeUpdates(thread.post.publicationId || null, thread.post.id, handleNewMessage, handleUpdatedMessage);
 
   // Scroll to bottom and notify parent when replies load
   useEffect(() => {
@@ -93,9 +174,17 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
           Back
         </button>
         <span className="text-discord-border select-none">|</span>
-        <span className="text-sm text-discord-text-secondary font-medium truncate">
+        <span className="text-sm text-discord-text-secondary font-medium truncate flex-1">
           Thread · {thread.post.author.name}
         </span>
+        {notifPermission === "default" && (
+          <button
+            onClick={requestNotifications}
+            className="flex-shrink-0 text-xs text-discord-text-muted hover:text-discord-text-primary transition-colors"
+          >
+            Enable notifications
+          </button>
+        )}
       </div>
 
       {/* Scrollable message area */}
@@ -122,13 +211,21 @@ export function ThreadView({ thread, onBack, registerRef, jumpTarget, onJumpComp
 
         <div className="flex flex-col gap-2">
         {replies.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={{ ...msg, isAuthor: msg.author.id === thread.post.author.id }}
-            registerRef={registerRef}
-            isReply
-            onReply={handleReplyTo}
-          />
+          <React.Fragment key={msg.id}>
+            {newDividerId === msg.id && (
+              <div className="flex items-center gap-3 px-4 py-1">
+                <div className="flex-1 h-px bg-red-500 opacity-50" />
+                <span className="text-xs font-semibold text-red-500">New messages</span>
+                <div className="flex-1 h-px bg-red-500 opacity-50" />
+              </div>
+            )}
+            <MessageBubble
+              message={{ ...msg, isAuthor: msg.author.id === thread.post.author.id }}
+              registerRef={registerRef}
+              isReply
+              onReply={handleReplyTo}
+            />
+          </React.Fragment>
         ))}
         </div>
       </div>
